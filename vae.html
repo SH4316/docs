@@ -1,0 +1,1114 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VAE: Variational Autoencoder 설명</title>
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['\\(', '\\)']],
+        displayMath: [['\\[', '\\]']],
+        processEscapes: true
+      },
+      svg: {
+        fontCache: 'global'
+      }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202a;
+      --muted: #5e6a75;
+      --line: #d7dde3;
+      --paper: #fbfcfd;
+      --panel: #ffffff;
+      --accent: #1f7a8c;
+      --accent-2: #8a5a44;
+      --accent-3: #456990;
+      --soft: #eaf4f6;
+      --soft-2: #f6efe9;
+      --code: #263238;
+      --shadow: 0 18px 45px rgba(31, 42, 55, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.7;
+    }
+
+    .shell {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      min-height: 92vh;
+      display: grid;
+      align-items: center;
+      padding: 52px 0 38px;
+      background:
+        linear-gradient(110deg, rgba(251, 252, 253, 0.96) 0%, rgba(251, 252, 253, 0.82) 46%, rgba(251, 252, 253, 0.55) 100%),
+        radial-gradient(circle at 80% 45%, rgba(31, 122, 140, 0.18), transparent 34%),
+        linear-gradient(135deg, #eef7f8 0%, #fbfcfd 54%, #f7efe8 100%);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
+      gap: 56px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      font-size: 0.84rem;
+      font-weight: 760;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      margin: 0 0 14px;
+    }
+
+    h1 {
+      font-size: clamp(2.6rem, 7vw, 5.7rem);
+      line-height: 0.95;
+      letter-spacing: 0;
+      margin: 0;
+      max-width: 780px;
+    }
+
+    .lead {
+      color: #394654;
+      font-size: clamp(1.06rem, 2vw, 1.28rem);
+      max-width: 690px;
+      margin: 26px 0 0;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 34px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 10px 16px;
+      border-radius: 6px;
+      border: 1px solid var(--accent);
+      color: #fff;
+      background: var(--accent);
+      text-decoration: none;
+      font-weight: 720;
+      line-height: 1.2;
+    }
+
+    .button.secondary {
+      color: var(--accent);
+      background: transparent;
+    }
+
+    .latent-visual {
+      position: relative;
+      min-height: 440px;
+      border: 1px solid rgba(31, 122, 140, 0.25);
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.68)),
+        repeating-linear-gradient(0deg, rgba(23, 32, 42, 0.04) 0 1px, transparent 1px 38px),
+        repeating-linear-gradient(90deg, rgba(23, 32, 42, 0.04) 0 1px, transparent 1px 38px);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .latent-visual::before {
+      content: "";
+      position: absolute;
+      inset: 50px 58px 96px;
+      border: 2px dashed rgba(31, 122, 140, 0.45);
+      border-radius: 50%;
+      transform: rotate(-14deg);
+      background: rgba(31, 122, 140, 0.06);
+    }
+
+    .latent-visual::after {
+      content: "z";
+      position: absolute;
+      left: 50%;
+      top: 47%;
+      transform: translate(-50%, -50%);
+      width: 68px;
+      height: 68px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: white;
+      background: var(--accent);
+      font-size: 2.2rem;
+      font-weight: 780;
+      box-shadow: 0 14px 34px rgba(31, 122, 140, 0.28);
+    }
+
+    .node {
+      position: absolute;
+      display: grid;
+      place-items: center;
+      width: 88px;
+      height: 88px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 760;
+      box-shadow: 0 12px 25px rgba(23, 32, 42, 0.08);
+    }
+
+    .node.small {
+      width: 56px;
+      height: 56px;
+      font-size: 0.9rem;
+      color: #fff;
+      border-color: transparent;
+      background: var(--accent-3);
+    }
+
+    .node.input {
+      left: 26px;
+      top: 46px;
+    }
+
+    .node.output {
+      right: 26px;
+      bottom: 42px;
+      background: var(--soft-2);
+      border-color: #e8d7ca;
+    }
+
+    .node.mu {
+      left: 120px;
+      bottom: 92px;
+    }
+
+    .node.sigma {
+      right: 116px;
+      top: 96px;
+      background: var(--accent-2);
+    }
+
+    .arrow {
+      position: absolute;
+      height: 2px;
+      background: rgba(23, 32, 42, 0.42);
+      transform-origin: left center;
+    }
+
+    .arrow::after {
+      content: "";
+      position: absolute;
+      right: -2px;
+      top: 50%;
+      width: 9px;
+      height: 9px;
+      border-right: 2px solid rgba(23, 32, 42, 0.48);
+      border-top: 2px solid rgba(23, 32, 42, 0.48);
+      transform: translateY(-50%) rotate(45deg);
+    }
+
+    .a1 {
+      left: 110px;
+      top: 100px;
+      width: 150px;
+      transform: rotate(24deg);
+    }
+
+    .a2 {
+      left: 226px;
+      top: 318px;
+      width: 108px;
+      transform: rotate(-35deg);
+    }
+
+    .a3 {
+      left: 246px;
+      top: 188px;
+      width: 140px;
+      transform: rotate(4deg);
+    }
+
+    .a4 {
+      right: 95px;
+      bottom: 114px;
+      width: 140px;
+      transform: rotate(24deg);
+    }
+
+    .caption {
+      position: absolute;
+      left: 22px;
+      right: 22px;
+      bottom: 18px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.45;
+      margin: 0;
+    }
+
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid var(--line);
+      background: rgba(251, 252, 253, 0.92);
+      backdrop-filter: blur(14px);
+    }
+
+    nav .shell {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding: 10px 0;
+    }
+
+    nav a {
+      flex: 0 0 auto;
+      padding: 8px 12px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.92rem;
+      font-weight: 700;
+      border-radius: 5px;
+    }
+
+    nav a:hover,
+    nav a:focus {
+      color: var(--accent);
+      background: var(--soft);
+      outline: none;
+    }
+
+    main {
+      padding: 34px 0 72px;
+    }
+
+    section {
+      padding: 64px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    section:last-child {
+      border-bottom: 0;
+    }
+
+    .section-kicker {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-size: 0.86rem;
+      font-weight: 780;
+    }
+
+    h2 {
+      margin: 0 0 22px;
+      font-size: clamp(1.75rem, 4vw, 3rem);
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 10px;
+      font-size: 1.24rem;
+      line-height: 1.35;
+    }
+
+    p {
+      margin: 0 0 16px;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+      box-shadow: 0 12px 28px rgba(31, 42, 55, 0.05);
+    }
+
+    .callout {
+      margin-top: 24px;
+      padding: 18px 20px;
+      border-left: 4px solid var(--accent);
+      background: var(--soft);
+      border-radius: 0 8px 8px 0;
+    }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      gap: 12px;
+      align-items: stretch;
+      margin-top: 26px;
+    }
+
+    .step {
+      min-height: 138px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 18px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .step strong {
+      display: block;
+      font-size: 1rem;
+      margin-bottom: 8px;
+    }
+
+    .pipe-arrow {
+      display: grid;
+      place-items: center;
+      color: var(--accent);
+      font-size: 1.8rem;
+      font-weight: 800;
+    }
+
+    .formula {
+      overflow-x: auto;
+      margin: 18px 0;
+      padding: 18px 20px;
+      color: var(--code);
+      background: #f2f5f7;
+      border: 1px solid #dfe6eb;
+      border-radius: 8px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: clamp(0.92rem, 2vw, 1.02rem);
+      line-height: 1.7;
+      white-space: normal;
+    }
+
+    .formula .label {
+      color: var(--accent);
+      font-weight: 800;
+      margin-right: 10px;
+    }
+
+    .formula mjx-container[jax="SVG"] {
+      margin: 0;
+      min-width: max-content;
+    }
+
+    .formula mjx-container[jax="SVG"][display="true"] {
+      text-align: left;
+    }
+
+    .term-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .term {
+      display: grid;
+      grid-template-columns: 170px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+      padding: 14px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .term code,
+    .term > span:first-child {
+      color: var(--accent-3);
+      font-size: 0.98rem;
+      font-weight: 760;
+      white-space: normal;
+    }
+
+    ol,
+    ul {
+      padding-left: 1.25rem;
+      margin: 12px 0 0;
+    }
+
+    li {
+      margin: 8px 0;
+    }
+
+    .equation-section {
+      display: grid;
+      grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    .sticky-note {
+      position: sticky;
+      top: 74px;
+      border-radius: 8px;
+      border: 1px solid #e9d9cc;
+      background: #fffaf6;
+      padding: 22px;
+    }
+
+    .mini-chart {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      align-items: end;
+      height: 150px;
+      margin-top: 20px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .bar {
+      border-radius: 5px 5px 0 0;
+      background: var(--accent);
+      min-height: 20px;
+    }
+
+    .bar:nth-child(2) {
+      height: 96px;
+      background: var(--accent-3);
+    }
+
+    .bar:nth-child(3) {
+      height: 128px;
+      background: var(--accent-2);
+    }
+
+    .bar:nth-child(4) {
+      height: 64px;
+      background: #6f8f72;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    footer {
+      padding: 32px 0 48px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 860px) {
+      .shell {
+        width: min(100% - 28px, 1120px);
+      }
+
+      .hero {
+        min-height: auto;
+        padding: 38px 0 28px;
+      }
+
+      .hero-grid,
+      .equation-section,
+      .grid,
+      .grid.two,
+      .summary {
+        grid-template-columns: 1fr;
+      }
+
+      .latent-visual {
+        min-height: 360px;
+      }
+
+      .pipeline {
+        grid-template-columns: 1fr;
+      }
+
+      .pipe-arrow {
+        min-height: 24px;
+        transform: rotate(90deg);
+      }
+
+      .term {
+        grid-template-columns: 1fr;
+        gap: 4px;
+      }
+
+      .sticky-note {
+        position: static;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .hero-actions {
+        flex-direction: column;
+      }
+
+      .button {
+        width: 100%;
+      }
+
+      .node {
+        width: 72px;
+        height: 72px;
+        font-size: 0.9rem;
+      }
+
+      .node.small {
+        width: 48px;
+        height: 48px;
+      }
+
+      .node.mu {
+        left: 70px;
+      }
+
+      .node.sigma {
+        right: 66px;
+      }
+
+      .formula {
+        padding: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="shell hero-grid">
+      <div>
+        <p class="eyebrow">Variational Autoencoder</p>
+        <h1>VAE를 수식과 직관으로 한 번에 보기</h1>
+        <p class="lead">
+          VAE는 데이터를 단순히 압축했다가 복원하는 오토인코더가 아니라,
+          데이터가 생성될 법한 잠재변수의 확률분포를 학습하는 생성모델이다.
+          이 페이지는 필요한 배경지식부터 논문의 핵심 수식인 ELBO까지 순서대로 정리한다.
+        </p>
+        <div class="hero-actions">
+          <a class="button" href="#background">배경지식부터 보기</a>
+          <a class="button secondary" href="#equations">핵심 수식 보기</a>
+        </div>
+      </div>
+
+      <div class="latent-visual" aria-label="VAE 구조 다이어그램">
+        <div class="node input">\(x\)</div>
+        <div class="node small mu">\(\mu\)</div>
+        <div class="node small sigma">\(\sigma\)</div>
+        <div class="node output">\(\hat{x}\)</div>
+        <div class="arrow a1"></div>
+        <div class="arrow a2"></div>
+        <div class="arrow a3"></div>
+        <div class="arrow a4"></div>
+        <p class="caption">
+          인코더는 입력 \(x\)를 하나의 점이 아니라 평균과 분산으로 표현하고,
+          그 분포에서 뽑은 \(z\)를 디코더가 다시 데이터로 만든다.
+        </p>
+      </div>
+    </div>
+  </header>
+
+  <nav aria-label="페이지 목차">
+    <div class="shell">
+      <a href="#background">배경지식</a>
+      <a href="#autoencoder">오토인코더</a>
+      <a href="#probability">확률적 관점</a>
+      <a href="#equations">핵심 수식</a>
+      <a href="#training">학습 목표</a>
+      <a href="#takeaway">요약</a>
+    </div>
+  </nav>
+
+  <main class="shell">
+    <section id="background">
+      <p class="section-kicker">01 Background</p>
+      <h2>VAE를 보기 전에 필요한 네 가지 배경</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>생성모델</h3>
+          <p>
+            생성모델은 관측 데이터 \(x\)의 분포 \(p(x)\)를 학습한다. 학습이 잘 되면
+            기존 데이터와 비슷하지만 완전히 새로운 샘플을 만들 수 있다.
+          </p>
+          <p class="muted">
+            이미지라면 손글씨 숫자, 얼굴, 물체 사진처럼 데이터 공간의 그럴듯한 점을 생성한다.
+          </p>
+        </article>
+
+        <article class="card">
+          <h3>잠재변수</h3>
+          <p>
+            잠재변수 \(z\)는 직접 관측되지 않지만 데이터를 설명하는 숨은 요인이다.
+            예를 들어 숫자 이미지에서는 획의 굵기, 기울기, 모양 같은 요인이 \(z\)에 담긴다.
+          </p>
+          <p class="muted">
+            VAE는 간단한 prior \(p(z)\)에서 \(z\)를 뽑고, 그 \(z\)로 \(x\)를 생성한다고 가정한다.
+          </p>
+        </article>
+
+        <article class="card">
+          <h3>주변확률</h3>
+          <p>
+            Marginal Probability는 관심 없는 변수나 관측되지 않은 변수를 모두 제거하고,
+            우리가 보고 싶은 변수만 남긴 확률이다. 결합분포 \(p(x,z)\)에서 \(z\)를 없애면 \(p(x)\)가 된다.
+          </p>
+          <div class="formula">\[p(x)=\int p(x,z)\,dz=\int p(x\mid z)p(z)\,dz\]</div>
+          <p class="muted">
+            VAE에서 \(p_\theta(x)\)는 가능한 모든 잠재 원인 \(z\)를 고려한 데이터 \(x\)의 marginal likelihood다.
+          </p>
+        </article>
+
+        <article class="card">
+          <h3>변분추론</h3>
+          <p>
+            진짜 posterior \(p(z\mid x)\)는 계산하기 어려운 경우가 많다.
+            그래서 다루기 쉬운 분포 \(q(z\mid x)\)를 두고, 이 \(q\)가 \(p(z\mid x)\)에 가까워지도록 학습한다.
+          </p>
+          <p class="muted">
+            VAE의 encoder는 바로 이 근사 posterior \(q_\phi(z\mid x)\)를 출력한다.
+          </p>
+        </article>
+      </div>
+
+      <div class="callout">
+        핵심 질문은 이것이다. “데이터 \(x\)를 가장 잘 설명하는 잠재분포 \(q_\phi(z\mid x)\)를 어떻게 학습하고,
+        동시에 \(z\)에서 \(x\)를 잘 복원하는 생성분포 \(p_\theta(x\mid z)\)를 어떻게 학습할 것인가?”
+      </div>
+    </section>
+
+    <section id="autoencoder">
+      <p class="section-kicker">02 From Autoencoder</p>
+      <h2>일반 오토인코더와 VAE의 차이</h2>
+      <div class="pipeline">
+        <div class="step">
+          <strong>입력 \(x\)</strong>
+          데이터 샘플이다. 이미지라면 픽셀 벡터, 텍스트라면 임베딩이나 토큰 표현이 될 수 있다.
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="step">
+          <strong>인코더 \(q_\phi(z\mid x)\)</strong>
+          VAE의 인코더는 압축 벡터 하나가 아니라 \(z\)의 평균 \(\mu\)와 분산 \(\sigma^2\)를 낸다.
+        </div>
+        <div class="pipe-arrow">→</div>
+        <div class="step">
+          <strong>디코더 \(p_\theta(x\mid z)\)</strong>
+          샘플링된 \(z\)를 받아 \(x\)가 생성될 확률분포를 만든다.
+        </div>
+      </div>
+
+      <div class="grid two" style="margin-top: 18px;">
+        <article class="card">
+          <h3>일반 오토인코더</h3>
+          <p>
+            \(x\)를 고정된 벡터 \(h\)로 압축하고, \(h\)에서 \(x\)를 복원한다. 목적은 주로 재구성 오차를 줄이는 것이다.
+          </p>
+          <div class="formula">\[x \rightarrow h \rightarrow \hat{x}\]</div>
+        </article>
+        <article class="card">
+          <h3>VAE</h3>
+          <p>
+            \(x\)를 \(z\)의 확률분포로 바꾸고, 그 분포에서 \(z\)를 샘플링해 \(x\)를 복원한다.
+            잠재공간이 연속적이고 샘플링 가능하도록 정규화한다.
+          </p>
+          <div class="formula">\[x \rightarrow q_\phi(z\mid x)=\mathcal{N}(\mu,\sigma^2 I) \rightarrow z \rightarrow \hat{x}\]</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="probability">
+      <p class="section-kicker">03 Probabilistic View</p>
+      <h2>VAE는 데이터를 이렇게 생성한다고 본다</h2>
+      <div class="equation-section">
+        <div>
+          <p>
+            VAE의 생성 과정은 단순하다. 먼저 표준정규분포 같은 prior에서 잠재변수 \(z\)를 뽑는다.
+            그다음 디코더가 \(z\)를 조건으로 데이터 \(x\)의 분포를 만든다.
+          </p>
+          <div class="formula">
+            \[
+            \begin{aligned}
+            z &amp;\sim p_\theta(z), \qquad p_\theta(z)=\mathcal{N}(0,I) \\
+            x &amp;\sim p_\theta(x\mid z)
+            \end{aligned}
+            \]
+          </div>
+          <p>
+            이때 우리가 최대화하고 싶은 것은 관측 데이터의 likelihood \(p_\theta(x)\)다.
+            하지만 \(z\)를 모두 적분해야 해서 직접 최적화하기 어렵다.
+          </p>
+          <div class="formula">\[p_\theta(x)=\int p_\theta(x,z)\,dz=\int p_\theta(x\mid z)p_\theta(z)\,dz\]</div>
+          <p>
+            적분이 나오는 이유는 \(z\)가 관측되지 않는 숨은 원인이기 때문이다.
+            우리는 데이터 \(x\)만 보고 있고, 그 \(x\)가 어떤 \(z\)에서 만들어졌는지는 모른다.
+            따라서 특정 \(z\) 하나만 고르는 대신, 가능한 모든 \(z\)가 \(x\)를 만들 확률을 prior \(p_\theta(z)\)로 가중해 모두 더해야 한다.
+            \(z\)가 연속변수이므로 이 “모두 더하기”가 합이 아니라 적분으로 쓰인다.
+          </p>
+          <div class="formula">
+            \[
+            \text{discrete } z:\quad p_\theta(x)=\sum_z p_\theta(x\mid z)p_\theta(z)
+            \qquad
+            \text{continuous } z:\quad p_\theta(x)=\int p_\theta(x\mid z)p_\theta(z)\,dz
+            \]
+          </div>
+        </div>
+
+        <aside class="sticky-note">
+          <h3>왜 어려운가?</h3>
+          <p>
+            고차원 \(z\)에 대해 모든 가능한 잠재 원인을 적분해야 한다. 딥러닝 모델의 디코더
+            \(p_\theta(x\mid z)\)가 들어가면 이 적분은 닫힌 형태로 계산되지 않는다.
+          </p>
+          <div class="mini-chart" aria-label="잠재변수 차원 증가에 따른 계산량 개념도">
+            <div class="bar" style="height: 40px;"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+          </div>
+          <p class="muted" style="margin-top: 12px;">
+            그래서 VAE는 직접 \(\log p_\theta(x)\)를 최대화하지 않고, 계산 가능한 하한을 최대화한다.
+          </p>
+        </aside>
+      </div>
+    </section>
+
+    <section id="equations">
+      <p class="section-kicker">04 Core Equations</p>
+      <h2>논문의 핵심 수식: ELBO</h2>
+      <p>
+        Auto-Encoding Variational Bayes 논문의 핵심은 \(\log p_\theta(x)\)를 직접 다루기 어렵기 때문에,
+        그 하한인 Evidence Lower Bound, 즉 ELBO를 최대화한다는 점이다.
+      </p>
+
+      <article class="card">
+        <h3>1. 근사 posterior 도입</h3>
+        <p>
+          진짜 \(p_\theta(z\mid x)\)는 계산하기 어렵다. 인코더 \(q_\phi(z\mid x)\)를 도입해 이를 근사한다.
+        </p>
+        <div class="formula">\[q_\phi(z\mid x) \approx p_\theta(z\mid x)\]</div>
+      </article>
+
+      <article class="card" style="margin-top: 16px;">
+        <h3>2. KL Divergence의 의미</h3>
+        <p>
+          KL Divergence는 한 확률분포 \(Q\)로 다른 확률분포 \(P\)를 설명할 때 생기는 정보 손실을 재는 값이다.
+          값이 0이면 두 분포가 같고, 값이 클수록 \(Q\)가 \(P\)를 잘 설명하지 못한다.
+        </p>
+        <div class="formula">
+          \[
+          D_{\mathrm{KL}}(P\,\|\,Q)
+          =
+          \mathbb{E}_{x\sim P}
+          \left[
+          \log\frac{P(x)}{Q(x)}
+          \right]
+          \]
+        </div>
+        <div class="term-list">
+          <div class="term">
+            <span>항상 0 이상</span>
+            <span>
+              \(D_{\mathrm{KL}}(P\,\|\,Q)\ge 0\)이며, 두 분포가 같을 때만 0이 된다.
+              그래서 “얼마나 다른가”를 나타내는 벌점처럼 사용할 수 있다.
+            </span>
+          </div>
+          <div class="term">
+            <span>대칭이 아님</span>
+            <span>
+              일반적으로 \(D_{\mathrm{KL}}(P\,\|\,Q)\ne D_{\mathrm{KL}}(Q\,\|\,P)\)다.
+              따라서 엄밀한 의미의 거리는 아니고, 기준 분포를 어느 쪽에 두는지가 중요하다.
+            </span>
+          </div>
+          <div class="term">
+            <span>VAE에서의 역할</span>
+            <span>
+              \(D_{\mathrm{KL}}(q_\phi(z\mid x)\,\|\,p(z))\)는 인코더가 만든 잠재분포가 prior \(p(z)\)에서
+              너무 멀어지지 않게 하는 정규화 항이다. 이 항이 없으면 복원은 잘해도 잠재공간이 끊어져,
+              prior에서 \(z\)를 샘플링했을 때 그럴듯한 데이터가 나오기 어렵다.
+            </span>
+          </div>
+        </div>
+      </article>
+
+      <article class="card" style="margin-top: 16px;">
+        <h3>3. ELBO 분해</h3>
+        <p>
+          log likelihood는 ELBO와 KL divergence의 합으로 분해된다.
+          KL divergence는 항상 0 이상이므로 ELBO는 \(\log p_\theta(x)\)의 하한이다.
+        </p>
+        <div class="formula">
+          \[
+          \begin{aligned}
+          \log p_\theta(x)
+          &amp;= \mathcal{L}(\theta,\phi;x)
+          + D_{\mathrm{KL}}\!\left(q_\phi(z\mid x)\,\|\,p_\theta(z\mid x)\right) \\
+          &amp;\ge \mathcal{L}(\theta,\phi;x)
+          \end{aligned}
+          \]
+        </div>
+        <p>
+          이 분해는 새 가정을 추가한 것이 아니라 항등식에 가깝다.
+          \(\log p_\theta(x)\)는 \(z\)에 의존하지 않으므로 \(q_\phi(z\mid x)\)에 대한 기대값으로 써도 값이 그대로다.
+          그다음 Bayes rule \(p_\theta(z\mid x)=p_\theta(x,z)/p_\theta(x)\)를 사용해 항을 재배열한다.
+        </p>
+        <div class="formula">
+          \[
+          \begin{aligned}
+          \log p_\theta(x)
+          &amp;= \mathbb{E}_{q_\phi(z\mid x)}
+          \left[\log p_\theta(x)\right] \\
+          &amp;= \mathbb{E}_{q_\phi(z\mid x)}
+          \left[
+          \log \frac{p_\theta(x,z)}{p_\theta(z\mid x)}
+          \right] \\
+          &amp;= \mathbb{E}_{q_\phi(z\mid x)}
+          \left[
+          \log \frac{p_\theta(x,z)}{q_\phi(z\mid x)}
+          \right]
+          +
+          \mathbb{E}_{q_\phi(z\mid x)}
+          \left[
+          \log \frac{q_\phi(z\mid x)}{p_\theta(z\mid x)}
+          \right] \\
+          &amp;= \mathcal{L}(\theta,\phi;x)
+          +
+          D_{\mathrm{KL}}\!\left(q_\phi(z\mid x)\,\|\,p_\theta(z\mid x)\right)
+          \end{aligned}
+          \]
+        </div>
+        <p>
+          위 식에서 첫 번째 기대값이 ELBO이고, 두 번째 기대값이 posterior에 대한 KL divergence다.
+          KL divergence는 항상 0 이상이므로, ELBO는 \(\log p_\theta(x)\)보다 클 수 없다.
+        </p>
+        <div class="formula">
+          \[
+          \begin{aligned}
+          \mathcal{L}(\theta,\phi;x)
+          &amp;=
+          \mathbb{E}_{q_\phi(z\mid x)}
+          \left[
+          \log p_\theta(x,z)-\log q_\phi(z\mid x)
+          \right] \\
+          &amp;=
+          \mathbb{E}_{q_\phi(z\mid x)}
+          \left[\log p_\theta(x\mid z)\right]
+          -
+          D_{\mathrm{KL}}\!\left(q_\phi(z\mid x)\,\|\,p_\theta(z)\right)
+          \end{aligned}
+          \]
+        </div>
+        <p>
+          그래서 학습에서는 “데이터를 잘 복원하는 항”과 “잠재분포를 prior에 가깝게 붙잡는 KL 항”이 함께 나타난다.
+        </p>
+      </article>
+
+      <article class="card" style="margin-top: 16px;">
+        <h3>4. 학습에 쓰는 ELBO</h3>
+        <p>
+          실제로 최적화하는 형태는 재구성 항과 정규화 항으로 나뉜다.
+        </p>
+        <div class="formula">
+          \[
+          \mathcal{L}(\theta,\phi;x)
+          =
+          \mathbb{E}_{q_\phi(z\mid x)}
+          \left[\log p_\theta(x\mid z)\right]
+          -
+          D_{\mathrm{KL}}\!\left(q_\phi(z\mid x)\,\|\,p_\theta(z)\right)
+          \]
+        </div>
+
+        <div class="term-list">
+          <div class="term">
+            <span>\(\mathbb{E}_{q_\phi}[\log p_\theta(x\mid z)]\)</span>
+            <span>
+              재구성 항이다. \(z\)를 통해 원래 \(x\)를 잘 설명하게 만든다.
+              이미지 VAE에서는 binary cross entropy나 Gaussian log likelihood 형태로 구현되는 경우가 많다.
+            </span>
+          </div>
+          <div class="term">
+            <span>\(D_{\mathrm{KL}}(q_\phi(z\mid x)\,\|\,p_\theta(z))\)</span>
+            <span>
+              정규화 항이다. 인코더가 만든 잠재분포 \(q_\phi(z\mid x)\)가 prior \(p(z)\), 보통 \(\mathcal{N}(0,I)\)에서
+              너무 멀어지지 않게 한다. 이 덕분에 prior에서 \(z\)를 뽑아도 그럴듯한 샘플이 나온다.
+            </span>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section id="training">
+      <p class="section-kicker">05 Training Trick</p>
+      <h2>Reparameterization Trick이 필요한 이유</h2>
+      <p>
+        VAE는 \(q_\phi(z\mid x)\)에서 \(z\)를 샘플링한다. 그런데 샘플링 연산이 그대로 있으면
+        \(z\)를 만든 인코더 파라미터 \(\phi\)로 gradient를 안정적으로 흘리기 어렵다.
+        그래서 무작위성 \(\epsilon\)을 밖으로 분리한다.
+      </p>
+
+      <div class="grid two">
+        <article class="card">
+          <h3>직접 샘플링</h3>
+          <div class="formula">\[z \sim \mathcal{N}\!\left(\mu_\phi(x),\sigma_\phi(x)^2 I\right)\]</div>
+          <p class="muted">
+            \(z\)가 확률적으로 뽑히므로 \(\mu\), \(\sigma\)를 내는 네트워크에 미분을 연결하기 어렵다.
+          </p>
+        </article>
+        <article class="card">
+          <h3>재매개변수화</h3>
+          <div class="formula">
+            \[
+            \epsilon \sim \mathcal{N}(0,I), \qquad
+            z=\mu_\phi(x)+\sigma_\phi(x)\odot\epsilon
+            \]
+          </div>
+          <p class="muted">
+            무작위성은 \(\epsilon\)에만 있고, \(z\)는 \(\mu\)와 \(\sigma\)의 미분 가능한 함수가 된다.
+          </p>
+        </article>
+      </div>
+
+      <div class="callout">
+        학습은 보통 loss를 최소화하는 형태로 구현한다. 따라서 실제 코드는
+        \(-\mathrm{ELBO}=\text{reconstruction loss}+\text{KL loss}\)를 최소화한다.
+      </div>
+
+      <article class="card" style="margin-top: 20px;">
+        <h3>Loss Function의 의미</h3>
+        <p>
+          VAE의 논문 수식은 ELBO를 최대화하는 형태지만, 딥러닝 코드는 보통 loss를 최소화한다.
+          그래서 부호를 바꿔 negative ELBO를 loss function으로 사용한다.
+        </p>
+        <div class="formula">
+          \[
+          \begin{aligned}
+          \mathcal{J}(\theta,\phi;x)
+          &amp;= -\mathcal{L}(\theta,\phi;x) \\
+          &amp;=
+          -\mathbb{E}_{q_\phi(z\mid x)}
+          \left[\log p_\theta(x\mid z)\right]
+          +
+          D_{\mathrm{KL}}\!\left(q_\phi(z\mid x)\,\|\,p(z)\right) \\
+          &amp;=
+          \mathcal{L}_{\mathrm{recon}}
+          +
+          \mathcal{L}_{\mathrm{KL}}
+          \end{aligned}
+          \]
+        </div>
+        <div class="term-list">
+          <div class="term">
+            <span>\(\mathcal{L}_{\mathrm{recon}}\)</span>
+            <span>
+              입력 \(x\)와 복원값 \(\hat{x}\)가 얼마나 다른지 보는 항이다.
+              \(p_\theta(x\mid z)\)를 Bernoulli 분포로 두면 binary cross entropy가 되고,
+              Gaussian 분포로 두면 평균제곱오차와 같은 형태가 된다.
+            </span>
+          </div>
+          <div class="term">
+            <span>\(\mathcal{L}_{\mathrm{KL}}\)</span>
+            <span>
+              인코더가 만든 \(q_\phi(z\mid x)\)가 prior \(p(z)=\mathcal{N}(0,I)\)에서 멀어지는 정도를 벌점으로 준다.
+              이 항은 잠재공간을 샘플링 가능한 모양으로 정리하는 역할을 한다.
+            </span>
+          </div>
+          <div class="term">
+            <span>trade-off</span>
+            <span>
+              reconstruction loss만 줄이면 복원은 좋아지지만 잠재공간이 불규칙해질 수 있고,
+              KL loss가 너무 강하면 잠재변수가 정보를 적게 담아 흐릿한 복원이 나올 수 있다.
+              \(\beta\)-VAE는 이 균형을 \(\mathcal{L}_{\mathrm{recon}}+\beta\mathcal{L}_{\mathrm{KL}}\)로 조절한다.
+            </span>
+          </div>
+        </div>
+        <p class="muted" style="margin-top: 14px;">
+          미니배치 학습에서는 각 샘플의 loss를 계산한 뒤 평균하거나 합산해서 optimizer에 전달한다.
+        </p>
+      </article>
+
+      <article class="card" style="margin-top: 20px;">
+        <h3>Diagonal Gaussian일 때 KL 항</h3>
+        <p>
+          \(q_\phi(z\mid x)=\mathcal{N}(\mu,\operatorname{diag}(\sigma^2))\), \(p(z)=\mathcal{N}(0,I)\)라면 KL 항은 닫힌 형태로 계산된다.
+        </p>
+        <div class="formula">
+          \[
+          D_{\mathrm{KL}}\!\left(q_\phi(z\mid x)\,\|\,p(z)\right)
+          =
+          -\frac{1}{2}\sum_j
+          \left(1+\log\sigma_j^2-\mu_j^2-\sigma_j^2\right)
+          \]
+        </div>
+      </article>
+    </section>
+
+    <section id="takeaway">
+      <p class="section-kicker">06 Takeaway</p>
+      <h2>VAE를 한 문장으로 정리하면</h2>
+      <div class="summary">
+        <article class="card">
+          <h3>모델 관점</h3>
+          <p>
+            VAE는 latent variable \(z\)에서 데이터 \(x\)가 생성된다고 가정하고,
+            \(p_\theta(x\mid z)\)와 \(q_\phi(z\mid x)\)를 함께 학습하는 확률적 생성모델이다.
+          </p>
+        </article>
+        <article class="card">
+          <h3>목적함수 관점</h3>
+          <p>
+            VAE는 \(\log p_\theta(x)\)를 직접 최대화하지 않고,
+            재구성 품질과 잠재분포 정규화를 동시에 담은 ELBO를 최대화한다.
+          </p>
+        </article>
+      </div>
+
+      <div class="formula" style="margin-top: 24px;">
+        \[
+        \begin{aligned}
+        \text{maximize}\quad \mathrm{ELBO}
+        &amp;= \text{reconstruction term}-\text{KL regularization} \\
+        \text{minimize}\quad \mathcal{J}
+        &amp;= \text{reconstruction loss}+\text{KL regularization}
+        \end{aligned}
+        \]
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="shell">
+      <p>
+        참고 키워드: Auto-Encoding Variational Bayes, ELBO, KL Divergence,
+        Reparameterization Trick, Latent Variable Model.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>
